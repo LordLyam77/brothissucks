@@ -10,7 +10,7 @@ static ESP s_esp;
 static bool s_loggedMatch = false;
 static bool s_loggedEmpty = true;
 
-static Vector3 ReadVector3(void* obj, const Il2CppClass* klass, const char* field) {
+static __attribute__((unused)) Vector3 ReadVector3(void* obj, const Il2CppClass* klass, const char* field) {
     Vector3 out;
     auto* r = GetResolver();
     if (!r || !obj || !klass) return {};
@@ -28,7 +28,7 @@ static float ReadFloat(void* obj, const Il2CppClass* klass, const char* field) {
     float v = 0; il2cpp_field_get_value(obj, f, &v); return v;
 }
 
-static int ReadInt(void* obj, const Il2CppClass* klass, const char* field) {
+static __attribute__((unused)) int ReadInt(void* obj, const Il2CppClass* klass, const char* field) {
     auto* r = GetResolver();
     if (!r || !obj || !klass) return 0;
     const Il2CppFieldInfo* f = il2cpp_class_get_field_from_name(klass, field);
@@ -44,7 +44,7 @@ static bool ReadBool(void* obj, const Il2CppClass* klass, const char* field) {
     unsigned char v = 0; il2cpp_field_get_value(obj, f, &v); return v != 0;
 }
 
-static void* GetObjectField(void* obj, const Il2CppClass* klass, const char* field) {
+static __attribute__((unused)) void* GetObjectField(void* obj, const Il2CppClass* klass, const char* field) {
     auto* r = GetResolver();
     if (!r || !obj || !klass) return nullptr;
     const Il2CppFieldInfo* f = il2cpp_class_get_field_from_name(klass, field);
@@ -62,7 +62,7 @@ static Vector3 GetTransformPosition(void* transform) {
     return *(Vector3*)il2cpp_object_unbox(res);
 }
 
-static void* GetComponent(void* obj, const Il2CppClass* componentClass) {
+static __attribute__((unused)) void* GetComponent(void* obj, const Il2CppClass* componentClass) {
     auto* r = GetResolver();
     if (!r || !obj || !componentClass || !r->classes.Component) return nullptr;
     const Il2CppMethodInfo* m = il2cpp_class_get_method_from_name(r->classes.Component, "GetComponent", 1);
@@ -222,6 +222,7 @@ void ESP::CollectPlayers() {
             il2cpp_field_get_value(player, fi, &v);
             if (v != 0) { pd.team = v; break; }
         }
+        (void)teamReads;
 
         pd.alive = true;
         const char* aliveFields[] = {"_alive", "isAlive", "IsAlive", "_isAlive", "alive", nullptr};

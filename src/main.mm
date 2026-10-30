@@ -187,7 +187,7 @@ static void NukeACClass(const Il2CppClass* klass, const char* name) {
             if (patched <= 6) CHEAT_LOG("ac:  patch %s::%s", name, mn);
         }
     }
-    CHEAT_LOG("ac: nuked %s (%d methods, %d patched)", name, count, patched);
+    CHEAT_LOG("ac: nuked %s (%d methods, %d patched, %d seen)", name, count, patched, seen);
 }
 
 // 0.38+ moved detector class names into the same obfuscation pass as gameplay

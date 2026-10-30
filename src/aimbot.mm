@@ -6,7 +6,7 @@ extern IL2CPPResolver* GetResolver();
 extern void* g_mainCamera;
 static Aimbot s_aimbot;
 
-static Vector3 QuaternionEuler(float pitch, float yaw) {
+static __attribute__((unused)) Vector3 QuaternionEuler(float pitch, float yaw) {
     float cy = cosf(yaw * 0.5f), sy = sinf(yaw * 0.5f);
     float cp = cosf(pitch * 0.5f), sp = sinf(pitch * 0.5f);
     Quaternion q = { sp*cy, cp*sy, -sp*sy, cp*cy };
@@ -39,7 +39,7 @@ static Vector3 EulerAngles(const Quaternion& q) {
     return eul;
 }
 
-static Quaternion QuaternionSlerp(const Quaternion& a, const Quaternion& b, float t) {
+static __attribute__((unused)) Quaternion QuaternionSlerp(const Quaternion& a, const Quaternion& b, float t) {
     float dot = a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
     if (dot < 0) { dot = -dot; }
     if (dot > 0.9995f) return a;
