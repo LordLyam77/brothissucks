@@ -68,6 +68,11 @@ if [ "$TARGET" = "auto" ]; then
         fwname="$(basename "$d" | sed 's/\.framework$//')"
         bin="$d/$fwname"
         [ -f "$bin" ] || continue
+        # UnityFramework is the engine itself — NEVER shell it!
+        [ "$fwname" = "UnityFramework" ] && continue
+        # Skip large binaries (>10MB)
+        fwsize=$(stat -f%z "$bin" 2>/dev/null || echo 0)
+        [ "$fwsize" -gt 10485760 ] && continue
         # not loaded by UnityFramework? skip (cheat would never load)
         grep -q "UnityFramework:$fwname" "$EDGES" || continue
         # how many other modules reference it?
