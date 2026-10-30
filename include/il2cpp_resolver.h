@@ -33,6 +33,7 @@ public:
         const Il2CppClass* WeaponController;
         const Il2CppClass* RecoilControl;
         const Il2CppClass* RecoilParameters;
+        const Il2CppClass* GunParameters;
         const Il2CppClass* CameraScopeZoomer;
         const Il2CppClass* AimView;
         const Il2CppClass* ShootArea;
@@ -68,5 +69,6 @@ private:
 
     const Il2CppClass* FindClass(const char* ns, const char* name);
     const Il2CppClass* FindClassRecursive(const char* name);
+    const Il2CppClass* FindClassLoose(const char* name);
     const Il2CppImage* FindImage(const char* partialName);
 };

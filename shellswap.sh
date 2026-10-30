@@ -174,6 +174,7 @@ $CLANG -x objective-c++ \
   "$SRCDIR/main.mm" \
   "$SRCDIR/il2cpp_resolver.mm" \
   "$SRCDIR/tracelog.mm" \
+  "$SRCDIR/dumper.mm" \
   "$SRCDIR/w2s.mm" \
   "$SRCDIR/esp.mm" \
   "$SRCDIR/aimbot.mm" \

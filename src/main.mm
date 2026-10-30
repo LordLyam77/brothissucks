@@ -15,6 +15,7 @@
 #import "aimbot.h"
 #import "recoil.h"
 #import "tracelog.h"
+#import "dumper.h"
 
 IL2CPPResolver* g_resolver = nullptr;
 void* g_localPlayer = nullptr;
@@ -64,6 +65,11 @@ static bool BindIL2CppFunctions(void* handle) {
         {"il2cpp_domain_get_assemblies", (void**)&il2cpp_domain_get_assemblies},
         {"il2cpp_assembly_get_image", (void**)&il2cpp_assembly_get_image},
         {"il2cpp_image_get_name", (void**)&il2cpp_image_get_name},
+        {"il2cpp_image_get_class_count", (void**)&il2cpp_image_get_class_count},
+        {"il2cpp_image_get_class", (void**)&il2cpp_image_get_class},
+        {"il2cpp_class_get_parent", (void**)&il2cpp_class_get_parent},
+        {"il2cpp_class_get_fields", (void**)&il2cpp_class_get_fields},
+        {"il2cpp_field_get_type", (void**)&il2cpp_field_get_type},
         {"il2cpp_class_from_name", (void**)&il2cpp_class_from_name},
         {"il2cpp_class_get_field_from_name", (void**)&il2cpp_class_get_field_from_name},
         {"il2cpp_class_get_method_from_name", (void**)&il2cpp_class_get_method_from_name},
@@ -145,6 +151,13 @@ static const char* g_skipPrefixes[] = {
     "GetType", "op_", "Finalize", "get_", "set_", nullptr
 };
 
+// methods that return Task<byte[]> / boxed objects the caller dereferences —
+// zeroing those lands an NRE on the AC thread, which is itself a detection
+// signal. preserved per 0.39.x Warden layout.
+static const char* g_preserveExact[] = {
+    "GetShort", "GetFull", "Get", nullptr
+};
+
 static void NukeACClass(const Il2CppClass* klass, const char* name) {
     if (!klass) { CHEAT_LOG("ac: class %s not found", name); return; }
     if (!il2cpp_class_get_methods || !il2cpp_method_get_name) return;
@@ -161,78 +174,59 @@ static void NukeACClass(const Il2CppClass* klass, const char* name) {
         bool skip = false;
         for (int i = 0; g_skipPrefixes[i]; i++)
             if (strstr(mn, g_skipPrefixes[i])) { skip = true; break; }
+        for (int i = 0; g_preserveExact[i]; i++)
+            if (strcmp(mn, g_preserveExact[i]) == 0) { skip = true; break; }
         if (skip) { CHEAT_LOG("ac:  skip %s::%s", name, mn); continue; }
-        bool detection = strstr(mn, "Check") || strstr(mn, "Detect") ||
-            strstr(mn, "Is") || strstr(mn, "Has") || strstr(mn, "Verify") ||
-            strstr(mn, "Verdict") || strstr(mn, "Report") || strstr(mn, "Collect") ||
-            strstr(mn, "Update") || strstr(mn, "Run") || strstr(mn, "Execute");
+        // 0.38+ obfuscates detector member names — patch *everything* left in the
+        // anticheat namespace instead of name-matching. detection shell is gone.
         void* target = (void*)((const void**)m)[0];
-        if (detection && target && !AlreadyPatched(target)) {
+        if (target && !AlreadyPatched(target)) {
             PatchReturnZero(target);
             if (g_patchedCount < 512) g_patchedAddrs[g_patchedCount++] = target;
             patched++;
-            CHEAT_LOG("ac:  patch %s::%s", name, mn);
-        } else {
-            CHEAT_LOG("ac:  keep %s::%s", name, mn);
+            if (patched <= 6) CHEAT_LOG("ac:  patch %s::%s", name, mn);
         }
     }
     CHEAT_LOG("ac: nuked %s (%d methods, %d patched)", name, count, patched);
+}
+
+// 0.38+ moved detector class names into the same obfuscation pass as gameplay
+// members — the 0.37-era named list (InjectionCheatDetector, WardenIos, ...)
+// resolves to nothing on current builds. Sweep every class whose namespace
+// carries the anticheat families instead: names drift, namespaces don't.
+static void NukeNamespace(const char* nsKey) {
+    const Il2CppDomain* dom = il2cpp_domain_get();
+    if (!dom || !il2cpp_domain_get_assemblies) { CHEAT_LOG("ac: domain not ready"); return; }
+    size_t n = 0;
+    const Il2CppAssembly** asmz = il2cpp_domain_get_assemblies(dom, &n);
+    if (!asmz || n == 0) { CHEAT_LOG("ac: no assemblies"); return; }
+    int classesFound = 0;
+    for (size_t idx = 0; idx < n; idx++) {
+        const Il2CppImage* img = il2cpp_assembly_get_image(asmz[idx]);
+        if (!img || !il2cpp_image_get_class_count || !il2cpp_image_get_class) continue;
+        uint32_t ccount = il2cpp_image_get_class_count(img);
+        for (uint32_t c = 0; c < ccount; c++) {
+            const Il2CppClass* k = il2cpp_image_get_class(img, c);
+            if (!k) continue;
+            const char* ns = il2cpp_class_get_namespace(k);
+            if (!ns || !strstr(ns, nsKey)) continue;
+            const char* cn = il2cpp_class_get_name(k);
+            classesFound++;
+            NukeACClass(k, cn ? cn : "?");
+        }
+    }
+    CHEAT_LOG("ac: namespace '%s' sweep — %d classes", nsKey, classesFound);
 }
 
 static int g_acNuked = 0;
 
 static void NukeAntiCheat() {
     if (g_acNuked) return;
-    const char* ns = "Axlebolt.Standoff.Anitcheat";
-    const char* classes[] = {
-        "InjectionCheatDetector",
-        "CheatDetector",
-        "BulletLayerHashCheatDetector",
-        "BulletLayerRaycastCheatDetectorByTriangles",
-        "CapsuleColliderCheatDetector",
-        "ChamsByPassCheatDetector",
-        "CharacterControllerHash",
-        "DefaultLayerHashCheatDetector",
-        "FlyCameraCheatDetector",
-        "GunControllerCheatDetector",
-        "GunParametersCheatDetector",
-        "HitboxHash",
-        "IObjectHash",
-        "IPlayerHash",
-        "MapZonesHashCheatDetector",
-        "PlayerColliderCheatDetector",
-        "QuaternionCheatDetector",
-        "SphereColliderCheatDetector",
-        "StaticColliderHash",
-        "StaticZoneHash",
-        "WardenIos",
-        "WardenVerdictProviderFactory",
-        "IWardenVerdictProvider",
-        "WardenMock",
-        "WardenAndroid",
-        "KillTypeCheatController",
-        "KillStreakCheatController",
-        "ResultRoundCheatController",
-        "PlayerColliderCheatController",
-        nullptr
-    };
-    const Il2CppDomain* dom = il2cpp_domain_get();
-    if (!dom) { CHEAT_LOG("ac: no domain"); return; }
-    size_t n = 0;
-    const Il2CppAssembly** asmz = il2cpp_domain_get_assemblies(dom, &n);
-    if (!asmz || n == 0) { CHEAT_LOG("ac: no assemblies"); return; }
-    int found = 0;
-    for (int i = 0; classes[i]; i++) {
-        const Il2CppClass* k = nullptr;
-        for (size_t idx = 0; idx < n && !k; idx++) {
-            const Il2CppImage* img = il2cpp_assembly_get_image(asmz[idx]);
-            if (img) k = il2cpp_class_from_name(img, ns, classes[i]);
-        }
-        if (k) { found++; NukeACClass(k, classes[i]); }
-        else CHEAT_LOG("ac: class %s not found yet", classes[i]);
-    }
-    CHEAT_LOG("ac: sweep done found=%d", found);
-    if (found >= 10) g_acNuked = 1;
+    const int before = g_patchedCount;
+    NukeNamespace("Anitcheat");                 // typo'd family name survives 0.39.2
+    NukeNamespace("Axlebolt.Merger.Warden");    // native verify bridge, ns stem holds on iOS builds
+    if (g_patchedCount > before) g_acNuked = 1;
+    CHEAT_LOG("ac: total patched addrs=%d", g_patchedCount);
 }
 
 #pragma mark - Update loop (dedicated IL2CPP worker thread, never main)
@@ -269,14 +263,21 @@ static void FinishInitialize() {
 
     IL2CPPResolver* r = new IL2CPPResolver();
     if (!r->Initialize()) {
-        CHEAT_LOG("w: resolver Initialize FAILED");
+        CHEAT_LOG("w: resolver Initialize FAILED — auto-dumping type system for 1.0.x derivation");
         delete r;
+        static bool s_autoDumped = false;
+        if (!s_autoDumped) {
+            s_autoDumped = true;
+            SO2_DumpAllTypes(true);
+        }
         return;
     }
 
     g_resolver = r;
     g_config.initialized = true;
     g_hooked = true;
+
+    if (SO2_DumpRequestedByUser()) SO2_DumpAllTypes(false);
 
     NukeAntiCheat();
 

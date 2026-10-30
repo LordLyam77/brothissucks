@@ -13,21 +13,27 @@ typedef struct Il2CppType Il2CppType;
 typedef struct Il2CppThread Il2CppThread;
 typedef struct Il2CppException Il2CppException;
 typedef struct Il2CppArray Il2CppArray;
+typedef void* Il2CppIterator;
 
 extern "C" {
     extern const Il2CppDomain* (*il2cpp_domain_get)();
     extern const Il2CppAssembly** (*il2cpp_domain_get_assemblies)(const Il2CppDomain* domain, size_t* size);
     extern const Il2CppImage* (*il2cpp_assembly_get_image)(const Il2CppAssembly* assembly);
     extern const char* (*il2cpp_image_get_name)(const Il2CppImage* image);
+    extern uint32_t (*il2cpp_image_get_class_count)(const Il2CppImage* image);
+    extern const Il2CppClass* (*il2cpp_image_get_class)(const Il2CppImage* image, uint32_t index);
 
     extern const Il2CppClass* (*il2cpp_class_from_name)(const Il2CppImage* image, const char* ns, const char* name);
     extern const Il2CppFieldInfo* (*il2cpp_class_get_field_from_name)(const Il2CppClass* klass, const char* name);
     extern const Il2CppMethodInfo* (*il2cpp_class_get_method_from_name)(const Il2CppClass* klass, const char* name, int paramCount);
     extern const char* (*il2cpp_class_get_name)(const Il2CppClass* klass);
     extern const char* (*il2cpp_class_get_namespace)(const Il2CppClass* klass);
+    extern const Il2CppClass* (*il2cpp_class_get_parent)(const Il2CppClass* klass);
+    extern const Il2CppFieldInfo* (*il2cpp_class_get_fields)(const Il2CppClass* klass, Il2CppIterator* iter);
 
     extern size_t (*il2cpp_field_get_offset)(const Il2CppFieldInfo* field);
     extern const char* (*il2cpp_field_get_name)(const Il2CppFieldInfo* field);
+    extern const Il2CppType* (*il2cpp_field_get_type)(const Il2CppFieldInfo* field);
     extern const Il2CppType* (*il2cpp_field_get_type)(const Il2CppFieldInfo* field);
     extern void (*il2cpp_field_get_value)(void* obj, const Il2CppFieldInfo* field, void* value);
     extern void (*il2cpp_field_set_value)(void* obj, const Il2CppFieldInfo* field, const void* value);
@@ -61,7 +67,6 @@ extern "C" {
     extern void* (*il2cpp_array_get)(const Il2CppArray* arr, uintptr_t index);
     extern uintptr_t (*il2cpp_array_length)(const Il2CppArray* arr);
 
-    typedef void* Il2CppIterator;
     extern const Il2CppMethodInfo* (*il2cpp_class_get_methods)(const Il2CppClass* klass, Il2CppIterator* iter);
     extern int (*il2cpp_class_get_method_count)(const Il2CppClass* klass);
 }

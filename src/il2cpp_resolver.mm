@@ -15,8 +15,11 @@ extern "C" {
     DEFINE_FPTR(const Il2CppMethodInfo*, il2cpp_class_get_method_from_name, (const Il2CppClass*, const char*, int));
     DEFINE_FPTR(const char*, il2cpp_class_get_name, (const Il2CppClass*));
     DEFINE_FPTR(const char*, il2cpp_class_get_namespace, (const Il2CppClass*));
+    DEFINE_FPTR(const Il2CppClass*, il2cpp_class_get_parent, (const Il2CppClass*));
+    DEFINE_FPTR(const Il2CppFieldInfo*, il2cpp_class_get_fields, (const Il2CppClass*, Il2CppIterator*));
     DEFINE_FPTR(size_t, il2cpp_field_get_offset, (const Il2CppFieldInfo*));
     DEFINE_FPTR(const char*, il2cpp_field_get_name, (const Il2CppFieldInfo*));
+    DEFINE_FPTR(const Il2CppType*, il2cpp_field_get_type, (const Il2CppFieldInfo*));
     DEFINE_FPTR(const Il2CppType*, il2cpp_field_get_type, (const Il2CppFieldInfo*));
     DEFINE_FPTR(void, il2cpp_field_get_value, (void*, const Il2CppFieldInfo*, void*));
     DEFINE_FPTR(void, il2cpp_field_set_value, (void*, const Il2CppFieldInfo*, const void*));
@@ -102,8 +105,49 @@ const Il2CppClass* IL2CPPResolver::FindClassRecursive(const char* name) {
     return nullptr;
 }
 
-size_t IL2CPPResolver::GetFieldOffset(const Il2CppClass* klass, const char* fieldName) {
-    if (!klass) return 0;
+// 1.0.x insurance: exact name not found → walk the live type system and match
+// game classes by case-insensitive substring (catches suffix renames like
+// PlayerController → PlayerControllerNew without a new dump).
+static char ClLower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
+static bool ClCIEqual(const char* a, const char* b) {
+    if (!a || !b) return false;
+    for (; *a || *b; a++, b++)
+        if (ClLower(*a) != ClLower(*b)) return false;
+    return true;
+}
+static bool ClCIContains(const char* hay, const char* needle) {
+    if (!hay || !needle) return false;
+    for (const char* h = hay; *h; h++) {
+        const char* a = h; const char* b = needle;
+        for (; *b; a++, b++)
+            if (ClLower(*a) != ClLower(*b)) break;
+        if (!*b) return true;
+    }
+    return false;
+}
+
+const Il2CppClass* IL2CPPResolver::FindClassLoose(const char* name) {
+    if (!name || !il2cpp_image_get_class || !il2cpp_image_get_class_count) return nullptr;
+    // pass 1: exact-name match anywhere — pass 2 is only the contains-fallback,
+    // so "PlayerController" can't lose to a longer variant sharing the prefix.
+    for (int pass = 0; pass < 2; pass++) {
+        for (size_t i = 0; i < assemblyCount; i++) {
+            const Il2CppImage* img = il2cpp_assembly_get_image(assemblies[i]);
+            if (!img) continue;
+            uint32_t ccount = il2cpp_image_get_class_count(img);
+            for (uint32_t c = 0; c < ccount; c++) {
+                const Il2CppClass* k = il2cpp_image_get_class(img, c);
+                if (!k) continue;
+                const char* nm = il2cpp_class_get_name(k);
+                if (!nm) continue;
+                if (pass == 0 ? ClCIEqual(nm, name) : ClCIContains(nm, name)) return k;
+            }
+        }
+    }
+    return nullptr;
+}
+
+size_t IL2CPPResolver::GetFieldOffset(const Il2CppClass* klass, const char* fieldName) {    if (!klass) return 0;
     std::string key = std::string(il2cpp_class_get_name(klass)) + "." + fieldName;
     auto it = m_fieldCache.find(key);
     if (it != m_fieldCache.end()) return it->second;
@@ -130,24 +174,34 @@ bool IL2CPPResolver::Initialize() {
 
     CHEAT_LOG("r: domain ok, %zu assemblies", assemblyCount);
 
-    classes.PlayerController = FindClassRecursive("PlayerController");
-    classes.PlayerManager = FindClassRecursive("PlayerManager");
-    classes.BipedMap = FindClassRecursive("BipedMap");
-    classes.PlayerCharacterView = FindClassRecursive("PlayerCharacterView");
-    classes.WeaponController = FindClassRecursive("WeaponController");
-    classes.RecoilControl = FindClassRecursive("RecoilControl");
-    classes.RecoilParameters = FindClassRecursive("RecoilParameters");
-    classes.CameraScopeZoomer = FindClassRecursive("CameraScopeZoomer");
-    classes.AimView = FindClassRecursive("AimView");
-    classes.ShootArea = FindClassRecursive("ShootArea");
-    classes.HUDView = FindClassRecursive("HUDView");
-    classes.PlayerView = FindClassRecursive("PlayerView");
-    classes.FpsOverlay = FindClassRecursive("FpsOverlay");
-    classes.WeaponManager = FindClassRecursive("WeaponManager");
-    classes.PlayerInputs = FindClassRecursive("PlayerInputs");
-    classes.Raycaster = FindClassRecursive("Raycaster");
-    classes.SpectatorCameraEffect = FindClassRecursive("SpectatorCameraEffect");
-    classes.PhotonPlayerGameExtension = FindClassRecursive("PhotonPlayerGameExtension");
+    auto resolve = [&](const char* n) -> const Il2CppClass* {
+        const Il2CppClass* k = FindClassRecursive(n);
+        if (!k) {
+            k = FindClassLoose(n);
+            if (k) CHEAT_LOG("r: loose-resolved '%s' via type-system sweep", n);
+        }
+        return k;
+    };
+
+    classes.PlayerController = resolve("PlayerController");
+    classes.PlayerManager = resolve("PlayerManager");
+    classes.BipedMap = resolve("BipedMap");
+    classes.PlayerCharacterView = resolve("PlayerCharacterView");
+    classes.WeaponController = resolve("WeaponController");
+    classes.RecoilControl = resolve("RecoilControl");
+    classes.RecoilParameters = resolve("RecoilParameters");
+    classes.GunParameters = resolve("GunParameters");
+    classes.CameraScopeZoomer = resolve("CameraScopeZoomer");
+    classes.AimView = resolve("AimView");
+    classes.ShootArea = resolve("ShootArea");
+    classes.HUDView = resolve("HUDView");
+    classes.PlayerView = resolve("PlayerView");
+    classes.FpsOverlay = resolve("FpsOverlay");
+    classes.WeaponManager = resolve("WeaponManager");
+    classes.PlayerInputs = resolve("PlayerInputs");
+    classes.Raycaster = resolve("Raycaster");
+    classes.SpectatorCameraEffect = resolve("SpectatorCameraEffect");
+    classes.PhotonPlayerGameExtension = resolve("PhotonPlayerGameExtension");
     CHEAT_LOG("r: standoff classes done (player=%p recoil=%p)", (void*)classes.PlayerController, (void*)classes.RecoilControl);
 
     classes.PhotonView = FindClass("Photon", "PhotonView");
